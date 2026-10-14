@@ -1,3 +1,20 @@
-venv/ 
-__pycache__/ 
-*.pyc 
+venv/
+__pycache__/
+*.pyc
+*.zip
+
+dataset/
+dataset_fast/
+dataset_small/
+source_datasets/
+professional_dataset/
+PlantVillage-Dataset/
+MangoLeafBD Dataset/
+15 Crop and 45 Disease and Healthy Leaf Plant Dise/
+
+history/
+prediction_history.csv
+
+model/*
+!model/crop_disease_model_81classes.keras
+!model/class_names_81.txt
