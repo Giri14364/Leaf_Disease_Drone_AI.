@@ -166,19 +166,152 @@ def extract_crop_and_disease(class_name):
     return crop.replace("_", " ").strip(), disease.replace("_", " ").strip()
 
 
-def get_disease_information(disease):
-    if disease.strip().lower().startswith("healthy"):
-        return DISEASE_INFO["healthy"]
-    return {
-        "status": "Possible disease or symptom detected",
+def get_disease_information(crop, disease):
+    """Return advice matched to both the crop and predicted disease label.
+
+    Advice is general guidance, not a confirmed diagnosis. For pesticide or
+    fungicide decisions, confirm the problem with a local agricultural expert.
+    """
+    crop_key = crop.strip().lower()
+    disease_key = disease.strip().lower().replace("_", " ")
+
+    healthy_info = {
+        "status": "Healthy",
         "solution": (
-            "Check the plant and nearby leaves carefully. Remove badly affected material only when appropriate, "
-            "and consult a local agricultural officer before applying pesticides or fungicides."
+            "The model classified this plant as healthy. No disease treatment is indicated "
+            "by this prediction. Continue normal crop care and monitor the plant."
         ),
         "prevention": (
-            "Maintain field sanitation, suitable plant spacing, balanced irrigation and nutrition, "
-            "and inspect the crop regularly."
+            "Maintain suitable irrigation, balanced nutrition, good spacing, and regular "
+            "inspection for early signs of pests or disease."
         ),
+    }
+
+    # Keys use the crop and disease labels from model/class_names_24.txt.
+    disease_info = {
+        "guava": {
+            "black mold": {
+                "status": "Possible black mold symptom detected",
+                "solution": "Inspect the fruit and leaves and confirm the cause. Remove affected material where appropriate. If a sticky coating is present, check for sap-feeding insects that may produce honeydew.",
+                "prevention": "Monitor for insects, maintain good airflow, and keep the growing area clean. Confirm the diagnosis before choosing a treatment.",
+            },
+            "healthy fruit": healthy_info,
+            "healthy leaf": healthy_info,
+            "insect bite": {
+                "status": "Possible insect damage detected",
+                "solution": "Inspect the damaged area and nearby leaves to identify the pest. Use a control method only after the pest is confirmed.",
+                "prevention": "Check plants regularly for insects and remove severely damaged plant material when appropriate. Follow local agricultural guidance for pest control.",
+            },
+            "multiple": {
+                "status": "Multiple symptoms may be present",
+                "solution": "The label indicates multiple symptoms and does not identify one specific cause. Have the plant examined before selecting a treatment.",
+                "prevention": "Monitor the crop regularly, maintain field hygiene, and record how symptoms develop over time.",
+            },
+            "red rust": {
+                "status": "Possible red rust symptom detected",
+                "solution": "Confirm the diagnosis with a local agricultural expert. Remove heavily affected material where appropriate and avoid applying a treatment until the cause is confirmed.",
+                "prevention": "Maintain good airflow, monitor leaves regularly, and keep fallen affected plant material under control where appropriate.",
+            },
+            "scab": {
+                "status": "Possible scab symptom detected",
+                "solution": "Check the fruit and leaves to confirm scab. Remove affected plant material where appropriate and seek locally recommended management advice.",
+                "prevention": "Maintain good airflow, inspect new growth and fruit regularly, and avoid unnecessary leaf wetness where feasible.",
+            },
+            "scorch": {
+                "status": "Possible leaf scorch or stress detected",
+                "solution": "Check watering, heat exposure, root health, and possible disease before choosing treatment. The image alone may not identify the cause of scorch.",
+                "prevention": "Maintain appropriate soil moisture, protect young plants from severe stress where practical, and inspect plants regularly.",
+            },
+            "yld": {
+                "status": "Unclear model label",
+                "solution": "The model label 'yld' is unclear, so a reliable disease-specific solution cannot be provided from this label alone. Check the dataset label definition and confirm the plant symptoms.",
+                "prevention": "Monitor the plant and consult a local agricultural expert after confirming what the 'yld' class represents.",
+            },
+        },
+        "mango": {
+            "anthracnose": {
+                "status": "Possible anthracnose detected",
+                "solution": "Confirm anthracnose from the symptoms. Remove infected plant material where appropriate and ask a local agricultural expert about locally approved management options.",
+                "prevention": "Maintain good airflow, monitor leaves, flowers and fruit, and avoid unnecessary wetting of foliage where feasible.",
+            },
+            "bacterial canker": {
+                "status": "Possible bacterial canker detected",
+                "solution": "Have the symptoms checked to confirm bacterial canker. Prune affected branches only when appropriate and sanitize tools between cuts. Seek local expert advice before treatment.",
+                "prevention": "Use clean tools, avoid injuring plants where possible, and inspect branches, leaves and fruit regularly.",
+            },
+            "cutting weevil": {
+                "status": "Possible cutting weevil damage detected",
+                "solution": "Inspect branches for characteristic cutting or feeding damage and confirm the pest before selecting a control method. Remove badly damaged material only where appropriate.",
+                "prevention": "Monitor branches regularly and follow local agricultural guidance if weevil activity is confirmed.",
+            },
+            "die back": {
+                "status": "Possible die-back symptoms detected",
+                "solution": "Die-back can have several causes. Check branches, roots, drainage and signs of pests or infection. Remove dead branches where appropriate using clean tools, and seek expert diagnosis.",
+                "prevention": "Maintain suitable drainage and irrigation, avoid plant injuries, and inspect branches regularly.",
+            },
+            "gall midge": {
+                "status": "Possible gall midge damage detected",
+                "solution": "Inspect affected new growth and confirm gall midge activity before choosing a pest-control method. Follow local agricultural recommendations.",
+                "prevention": "Monitor new shoots and leaves regularly and record when symptoms first appear.",
+            },
+            "healthy": healthy_info,
+            "powdery mildew": {
+                "status": "Possible powdery mildew detected",
+                "solution": "Confirm powdery mildew and seek locally approved management advice. Use a treatment only when the diagnosis and local recommendations support it.",
+                "prevention": "Maintain good airflow, avoid overly dense growth, and inspect new leaves, flowers and fruit regularly.",
+            },
+            "sooty mould": {
+                "status": "Possible sooty mould detected",
+                "solution": "Check for honeydew-producing insects such as scale insects or aphids, because sooty mould can grow on their secretions. Confirm the cause before selecting control measures.",
+                "prevention": "Monitor for sap-feeding insects and manage confirmed infestations using locally recommended methods.",
+            },
+        },
+        "neem": {
+            "alternaria": {
+                "status": "Possible Alternaria symptoms detected",
+                "solution": "Confirm the diagnosis and remove affected fallen plant debris where appropriate. Ask a local agricultural expert about management options before applying a fungicide.",
+                "prevention": "Maintain airflow, avoid unnecessary leaf wetness, and inspect leaves regularly.",
+            },
+            "dieback": {
+                "status": "Possible die-back symptoms detected",
+                "solution": "Inspect branches and roots to identify the cause. Remove dead branches only where appropriate, sanitize tools, and seek expert advice if symptoms spread.",
+                "prevention": "Maintain suitable drainage, avoid injuries to the tree, and monitor branches regularly.",
+            },
+            "healthy": healthy_info,
+            "leaf blight": {
+                "status": "Possible leaf blight detected",
+                "solution": "Confirm the diagnosis and remove affected fallen leaves where appropriate. Seek locally recommended management advice before applying any treatment.",
+                "prevention": "Maintain good airflow, avoid unnecessary leaf wetness, and monitor new leaves for symptoms.",
+            },
+            "leaf miners": {
+                "status": "Possible leaf miner damage detected",
+                "solution": "Inspect leaves for tunnels or mining damage and confirm the pest. Choose control measures only after identification and according to local guidance.",
+                "prevention": "Check young leaves regularly and monitor whether damage is increasing.",
+            },
+            "leaf rust": {
+                "status": "Possible leaf rust detected",
+                "solution": "Confirm the rust diagnosis and seek local agricultural advice about suitable management. Avoid using a treatment until the cause is confirmed.",
+                "prevention": "Monitor leaves regularly, maintain airflow, and manage affected fallen plant material where appropriate.",
+            },
+            "powdery mildew": {
+                "status": "Possible powdery mildew detected",
+                "solution": "Confirm powdery mildew and seek locally approved management advice. Use a treatment only if the diagnosis and local recommendations support it.",
+                "prevention": "Maintain good airflow, avoid overly dense growth, and inspect leaves regularly.",
+            },
+        },
+    }
+
+    if disease_key.startswith("healthy"):
+        return healthy_info
+
+    result = disease_info.get(crop_key, {}).get(disease_key)
+    if result:
+        return result
+
+    return {
+        "status": "Possible disease or symptom detected",
+        "solution": "No specific guidance is configured for this crop and label yet. Confirm the diagnosis with a local agricultural expert before treatment.",
+        "prevention": "Monitor the crop regularly, maintain suitable irrigation and field hygiene, and follow local agricultural guidance.",
     }
 
 
@@ -275,7 +408,7 @@ def predict_disease(image):
             "The model's leading categories are too close to make a reliable selection.",
         )
 
-    information = get_disease_information(disease)
+    information = get_disease_information(crop, disease)
     return [{
         "class_name": class_name,
         "display_name": format_class_name(class_name),
