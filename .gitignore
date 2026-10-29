@@ -16,5 +16,5 @@ history/
 prediction_history.csv
 
 model/*
-!model/crop_disease_model_81classes.keras
-!model/class_names_81.txt
+!model/crop_disease_model_24classes.keras
+!model/class_names_24.txt

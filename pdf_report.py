@@ -1,5 +1,7 @@
+```python
 from io import BytesIO
 
+from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
@@ -10,7 +12,7 @@ from reportlab.platypus import (
     SimpleDocTemplate,
     Spacer,
     Table,
-    TableStyle
+    TableStyle,
 )
 
 
@@ -21,7 +23,7 @@ def create_pdf_report(
     confidence_text,
     symptoms,
     management,
-    current_time
+    current_time,
 ):
     pdf_buffer = BytesIO()
 
@@ -31,17 +33,31 @@ def create_pdf_report(
         rightMargin=40,
         leftMargin=40,
         topMargin=40,
-        bottomMargin=40
+        bottomMargin=40,
     )
 
-    # Styles
+    # =========================================================
+    # STYLES
+    # =========================================================
+
     title_style = ParagraphStyle(
         "TitleStyle",
         fontName="Helvetica-Bold",
         fontSize=20,
         leading=24,
         alignment=TA_CENTER,
-        spaceAfter=20
+        textColor=colors.HexColor("#176B3A"),
+        spaceAfter=5,
+    )
+
+    subtitle_style = ParagraphStyle(
+        "SubtitleStyle",
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#666666"),
+        spaceAfter=18,
     )
 
     heading_style = ParagraphStyle(
@@ -49,8 +65,9 @@ def create_pdf_report(
         fontName="Helvetica-Bold",
         fontSize=14,
         leading=18,
+        textColor=colors.HexColor("#176B3A"),
         spaceBefore=15,
-        spaceAfter=8
+        spaceAfter=8,
     )
 
     normal_style = ParagraphStyle(
@@ -58,63 +75,150 @@ def create_pdf_report(
         fontName="Helvetica",
         fontSize=10,
         leading=15,
-        spaceAfter=7
+        textColor=colors.HexColor("#333333"),
+        spaceAfter=6,
     )
 
-    disclaimer_style = ParagraphStyle(
-        "DisclaimerStyle",
+    bullet_style = ParagraphStyle(
+        "BulletStyle",
         fontName="Helvetica",
-        fontSize=9,
-        leading=13,
-        spaceBefore=10
+        fontSize=10,
+        leading=15,
+        leftIndent=12,
+        firstLineIndent=-8,
+        textColor=colors.HexColor("#333333"),
+        spaceAfter=5,
     )
 
     story = []
 
-    # Title
+    # =========================================================
+    # TITLE
+    # =========================================================
+
     story.append(
         Paragraph(
             "AI Crop Disease Detection Report",
-            title_style
+            title_style,
         )
     )
 
-    # Image
+    story.append(
+        Paragraph(
+            "Agricultural Crop Health Analysis",
+            subtitle_style,
+        )
+    )
+
+    # =========================================================
+    # UPLOADED / CAPTURED IMAGE
+    # =========================================================
+
     image_buffer = BytesIO()
 
     image.convert("RGB").save(
         image_buffer,
-        format="JPEG"
+        format="JPEG",
+        quality=95,
     )
 
     image_buffer.seek(0)
 
     report_image = ReportImage(
         image_buffer,
-        width=3.2 * inch,
-        height=3.2 * inch
+        width=3.4 * inch,
+        height=3.4 * inch,
     )
 
-    story.append(report_image)
+    image_table = Table(
+        [[report_image]],
+        colWidths=[6.0 * inch],
+    )
+
+    image_table.setStyle(
+        TableStyle(
+            [
+                (
+                    "ALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "CENTER",
+                ),
+                (
+                    "VALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "MIDDLE",
+                ),
+                (
+                    "BOX",
+                    (0, 0),
+                    (-1, -1),
+                    0.8,
+                    colors.HexColor("#D5D5D5"),
+                ),
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, -1),
+                    colors.HexColor("#F8F8F8"),
+                ),
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    10,
+                ),
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    10,
+                ),
+            ]
+        )
+    )
+
+    story.append(image_table)
 
     story.append(
-        Spacer(1, 20)
+        Paragraph(
+            "Uploaded / Captured Leaf Image",
+            ParagraphStyle(
+                "ImageCaption",
+                parent=normal_style,
+                alignment=TA_CENTER,
+                textColor=colors.HexColor("#666666"),
+                spaceBefore=6,
+                spaceAfter=12,
+            ),
+        )
     )
 
-    # Prediction details
+    # =========================================================
+    # DETECTION RESULT
+    # =========================================================
+
+    story.append(
+        Paragraph(
+            "Detection Result",
+            heading_style,
+        )
+    )
+
     prediction_data = [
-        ["Date & Time", current_time],
-        ["Crop", crop_name],
-        ["Disease", disease_name],
-        ["Confidence", confidence_text]
+        ["Date & Time", str(current_time)],
+        ["Crop", str(crop_name)],
+        ["Detected Disease", str(disease_name)],
+        ["Confidence", str(confidence_text)],
     ]
 
     prediction_table = Table(
         prediction_data,
         colWidths=[
-            1.6 * inch,
-            4.4 * inch
-        ]
+            1.7 * inch,
+            4.3 * inch,
+        ],
     )
 
     prediction_table.setStyle(
@@ -125,115 +229,180 @@ def create_pdf_report(
                     (0, 0),
                     (-1, -1),
                     0.5,
-                    "grey"
+                    colors.HexColor("#D0D0D0"),
                 ),
                 (
                     "BACKGROUND",
                     (0, 0),
                     (0, -1),
-                    "#eeeeee"
+                    colors.HexColor("#EAF5EE"),
+                ),
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (0, -1),
+                    colors.HexColor("#176B3A"),
                 ),
                 (
                     "FONTNAME",
                     (0, 0),
                     (0, -1),
-                    "Helvetica-Bold"
+                    "Helvetica-Bold",
                 ),
                 (
                     "FONTNAME",
                     (1, 0),
                     (1, -1),
-                    "Helvetica"
+                    "Helvetica",
                 ),
                 (
                     "VALIGN",
                     (0, 0),
                     (-1, -1),
-                    "TOP"
+                    "TOP",
                 ),
                 (
                     "LEFTPADDING",
                     (0, 0),
                     (-1, -1),
-                    8
+                    8,
                 ),
                 (
                     "RIGHTPADDING",
                     (0, 0),
                     (-1, -1),
-                    8
+                    8,
                 ),
                 (
                     "TOPPADDING",
                     (0, 0),
                     (-1, -1),
-                    8
+                    8,
                 ),
                 (
                     "BOTTOMPADDING",
                     (0, 0),
                     (-1, -1),
-                    8
-                )
+                    8,
+                ),
             ]
         )
     )
 
-    story.append(
-        prediction_table
-    )
+    story.append(prediction_table)
 
-    # Common symptoms
+    # =========================================================
+    # DISEASE EXPLANATION / SYMPTOMS
+    # =========================================================
+
     story.append(
         Paragraph(
-            "Common Symptoms",
-            heading_style
+            "Disease Explanation & Symptoms",
+            heading_style,
         )
     )
 
-    for symptom in symptoms:
-
+    if symptoms:
+        for symptom in symptoms:
+            story.append(
+                Paragraph(
+                    f"• {str(symptom)}",
+                    bullet_style,
+                )
+            )
+    else:
         story.append(
             Paragraph(
-                str(symptom),
-                normal_style
+                "No disease explanation or symptom information available.",
+                normal_style,
             )
         )
 
-    # Management recommendations
+    # =========================================================
+    # SOLUTION / MANAGEMENT
+    # =========================================================
+
     story.append(
         Paragraph(
-            "Management Recommendations",
-            heading_style
+            "Recommended Solution & Management",
+            heading_style,
         )
     )
 
-    for recommendation in management:
-
+    if management:
+        for recommendation in management:
+            story.append(
+                Paragraph(
+                    f"• {str(recommendation)}",
+                    bullet_style,
+                )
+            )
+    else:
         story.append(
             Paragraph(
-                str(recommendation),
-                normal_style
+                "No solution or management information available.",
+                normal_style,
             )
         )
 
-    # Disclaimer
+    # =========================================================
+    # FOOTER
+    # =========================================================
+
     story.append(
-        Paragraph(
-            "<b>Disclaimer:</b> AI predictions are "
-            "intended as decision-support information. "
-            "Confirm the diagnosis with a qualified "
-            "agricultural expert before making treatment "
-            "decisions.",
-            disclaimer_style
+        Spacer(1, 18)
+    )
+
+    footer_style = ParagraphStyle(
+        "FooterStyle",
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#777777"),
+    )
+
+    footer_table = Table(
+        [
+            [
+                Paragraph(
+                    "AI-Based Agricultural Crop Disease Detection System",
+                    footer_style,
+                )
+            ]
+        ],
+        colWidths=[6.0 * inch],
+    )
+
+    footer_table.setStyle(
+        TableStyle(
+            [
+                (
+                    "LINEABOVE",
+                    (0, 0),
+                    (-1, 0),
+                    0.5,
+                    colors.HexColor("#D0D0D0"),
+                ),
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    8,
+                ),
+            ]
         )
     )
 
-    # Build PDF
-    document.build(
-        story
-    )
+    story.append(footer_table)
+
+    # =========================================================
+    # BUILD PDF
+    # =========================================================
+
+    document.build(story)
 
     pdf_buffer.seek(0)
 
     return pdf_buffer.getvalue()
+```

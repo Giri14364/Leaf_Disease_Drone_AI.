@@ -1,0 +1,24 @@
+Guava_black_mold
+Guava_healthy_fruit
+Guava_healthy_leaf
+Guava_insect_bite
+Guava_multiple
+Guava_red_rust
+Guava_scab
+Guava_scorch
+Guava_yld
+Mango_Anthracnose
+Mango_Bacterial Canker
+Mango_Cutting Weevil
+Mango_Die Back
+Mango_Gall Midge
+Mango_Healthy
+Mango_Powdery Mildew
+Mango_Sooty Mould
+Neem_Alternaria
+Neem_Dieback
+Neem_Healthy
+Neem_Leaf_Blight
+Neem_Leaf_Miners
+Neem_Leaf_Rust
+Neem_Powdery_Mildew
