@@ -17,6 +17,7 @@ from reportlab.lib.utils import ImageReader
 # PAGE CONFIGURATION AND PATHS
 # ============================================================
 st.set_page_config(page_title="AI Crop Disease Detection", page_icon="🌱", layout="wide")
+
 PROJECT_DIR = Path(__file__).resolve().parent
 MODEL_PATH = PROJECT_DIR / "model" / "crop_disease_model_24classes.keras"
 CLASS_NAMES_PATH = PROJECT_DIR / "model" / "class_names_24.txt"
@@ -25,21 +26,75 @@ HISTORY_FILE = HISTORY_DIR / "prediction_history.csv"
 HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 IMAGE_SIZE = (224, 224)
-# Higher thresholds reduce some false matches but cannot guarantee rejection
-# of every unsupported plant. A dedicated out-of-scope training set is best.
-MIN_CONFIDENCE = 75.0
-MIN_TOP_TWO_GAP = 15.0
-PERSON_CONFIDENCE_THRESHOLD = 0.35
-PERSON_MODEL_PATH = PROJECT_DIR / "yolov8n.pt"
 EXPECTED_CLASSES = 24
 SUPPORTED_CROPS = {"guava", "mango", "neem"}
+MIN_CONFIDENCE = 75.0
+MIN_TOP_TWO_GAP = 15.0
+
+# A general ImageNet model is used as a lightweight first-pass check instead
+# of Ultralytics/YOLO. It can reject many obvious people/animal/object images,
+# but it cannot guarantee detection of every unsupported leaf or object.
+ENABLE_GENERAL_IMAGE_CHECK = True
 
 DISEASE_INFO = {
     "healthy": {
         "status": "Healthy",
-        "solution": "The image is classified as healthy. Continue regular irrigation, balanced fertilization, field monitoring and pest inspection.",
-        "prevention": "Maintain suitable spacing, irrigation, nutrition and regular crop monitoring.",
+        "solution": (
+            "The image is classified as healthy. Continue regular irrigation, "
+            "balanced fertilization, field monitoring and pest inspection."
+        ),
+        "prevention": (
+            "Maintain suitable spacing, irrigation, nutrition and regular crop monitoring."
+        ),
     },
+}
+
+# ImageNet labels that clearly indicate non-plant content. This is deliberately
+# conservative so the general classifier does not reject every unusual leaf.
+NON_PLANT_LABEL_TERMS = {
+    "person", "bridegroom", "groom", "scuba diver", "military uniform",
+    "academic gown", "suit", "maillot", "bikini", "face powder",
+    "dog", "cat", "bird", "hen", "cock", "rooster", "ostrich", "brambling",
+    "goldfinch", "house finch", "junco", "indigo bunting", "robin",
+    "bulbul", "jay", "magpie", "chickadee", "water ouzel", "kite",
+    "bald eagle", "vulture", "owl", "European fire salamander", "frog",
+    "turtle", "lizard", "snake", "crocodile", "alligator", "dinosaur",
+    "monkey", "baboon", "chimpanzee", "gorilla", "orangutan", "macaque",
+    "langur", "baboon", "elephant", "lesser panda", "giant panda", "bear",
+    "fox", "wolf", "hyena", "lion", "tiger", "leopard", "cheetah",
+    "horse", "zebra", "pig", "wild boar", "hippopotamus", "ox", "water buffalo",
+    "bison", "ram", "bighorn", "ibex", "hartebeest", "impala", "gazelle",
+    "camel", "llama", "weasel", "mink", "polecat", "otter", "skunk", "badger",
+    "armadillo", "sloth", "deer", "reindeer", "moose", "elk", "rabbit", "hare",
+    "hamster", "porcupine", "squirrel", "marmot", "beaver", "guinea pig",
+    "mouse", "rat", "bat", "whale", "dolphin", "shark", "fish", "jellyfish",
+    "starfish", "crab", "lobster", "snail", "slug", "sea urchin", "butterfly",
+    "moth", "bee", "ant", "grasshopper", "cricket", "cockroach", "fly",
+    "mosquito", "dragonfly", "spider", "scorpion", "centipede", "worm",
+    "aircraft", "airliner", "warplane", "helicopter", "ship", "boat", "canoe",
+    "speedboat", "gondola", "submarine", "car", "sports car", "limousine",
+    "truck", "bus", "minibus", "jeep", "taxi", "motor scooter", "motorcycle",
+    "bicycle", "mountain bike", "tractor", "tank", "train", "tram", "ambulance",
+    "fire engine", "school bus", "forklift", "crane", "lawn mower",
+    "computer", "laptop", "desktop computer", "keyboard", "mouse device",
+    "monitor", "screen", "printer", "telephone", "cellular telephone", "camera",
+    "remote control", "television", "radio", "microphone", "speaker", "modem",
+    "refrigerator", "washer", "dishwasher", "vacuum", "iron", "fan",
+    "chair", "armchair", "sofa", "couch", "table", "desk", "bench", "stool",
+    "bed", "wardrobe", "cabinet", "bookcase", "shelf", "book", "notebook",
+    "envelope", "paper towel", "carton", "packet", "plastic bag", "bucket",
+    "bottle", "jar", "cup", "mug", "plate", "bowl", "spoon", "fork", "knife",
+    "scissors", "hammer", "screwdriver", "wrench", "saw", "tool kit", "chain saw",
+    "drill", "torch", "flashlight", "umbrella", "shoe", "boot", "sandal",
+    "hat", "cap", "helmet", "glove", "sock", "shirt", "jean", "trousers",
+    "dress", "coat", "jacket", "tie", "backpack", "handbag", "purse", "wallet",
+    "watch", "clock", "sunglasses", "sunglass", "ring", "necklace", "earring",
+    "ball", "football", "soccer ball", "basketball", "tennis ball", "racket",
+    "guitar", "piano", "violin", "drum", "flute", "trumpet", "accordion",
+    "toy", "doll", "teddy", "puzzle", "game controller", "joystick",
+    "building", "house", "church", "mosque", "castle", "bridge", "fountain",
+    "street sign", "traffic light", "stop sign", "fire hydrant", "mailbox",
+    "streetcar", "parking meter", "flagpole", "flag", "sculpture",
 }
 
 if "prediction_results" not in st.session_state:
@@ -76,43 +131,22 @@ def load_model():
 
 
 @st.cache_resource
-def load_person_detector():
-    """Load YOLO's pretrained COCO detector, which includes the 'person' class."""
-    try:
-        from ultralytics import YOLO
-    except ImportError as error:
-        raise RuntimeError(
-            "Person detection requires Ultralytics. In your project venv run: "
-            "python -m pip install ultralytics"
-        ) from error
-
-    # The first run downloads yolov8n.pt if it is not already available.
-    return YOLO(str(PERSON_MODEL_PATH) if PERSON_MODEL_PATH.exists() else "yolov8n.pt")
-
-
-def detect_person(image):
-    """Return (person_detected, highest_person_confidence)."""
-    detector = load_person_detector()
-    rgb_array = np.asarray(image.convert("RGB"))
-    detections = detector.predict(
-        source=rgb_array,
-        classes=[0],  # COCO class 0 = person
-        conf=PERSON_CONFIDENCE_THRESHOLD,
-        verbose=False,
+def load_general_image_model():
+    """Load ImageNet MobileNetV2 for broad non-plant image screening."""
+    if not ENABLE_GENERAL_IMAGE_CHECK:
+        return None
+    return tf.keras.applications.MobileNetV2(
+        weights="imagenet",
+        include_top=True,
+        input_shape=(224, 224, 3),
     )
-    if not detections or detections[0].boxes is None or len(detections[0].boxes) == 0:
-        return False, 0.0
-
-    confidences = detections[0].boxes.conf.detach().cpu().numpy()
-    highest_confidence = float(np.max(confidences)) if len(confidences) else 0.0
-    return highest_confidence >= PERSON_CONFIDENCE_THRESHOLD, highest_confidence
 
 
 try:
     CLASS_NAMES = load_class_names()
     MODEL = load_model()
 except Exception as error:
-    st.error("Unable to load the AI model or class names.")
+    st.error("Unable to load the crop disease model or class names.")
     st.exception(error)
     st.stop()
 
@@ -122,7 +156,6 @@ def format_class_name(class_name):
 
 
 def extract_crop_and_disease(class_name):
-    # Current 24-class labels are expected to start with Guava_, Mango_, or Neem_.
     normalized = class_name.strip()
     if "___" in normalized:
         crop, disease = normalized.split("___", 1)
@@ -179,18 +212,43 @@ def not_categorized(confidence=None, reason="The image does not sufficiently mat
     }]
 
 
-def predict_disease(image):
-    """Predict a supported class; reject low-confidence/ambiguous results.
-
-    Note: a closed-set classifier cannot reliably identify every unseen crop or
-    unrelated image as unknown. Confidence and probability-gap checks are
-    practical safeguards, not a guarantee of out-of-distribution detection.
+def check_general_image_content(image):
     """
+    Reject many obvious non-plant images with ImageNet MobileNetV2.
+    This is a screening aid, not a dedicated leaf detector. If the general
+    model cannot load, this check fails open and the crop model still runs.
+    """
+    try:
+        general_model = load_general_image_model()
+        rgb = image.convert("RGB").resize((224, 224))
+        array = np.asarray(rgb, dtype=np.float32)
+        array = tf.keras.applications.mobilenet_v2.preprocess_input(array)
+        array = np.expand_dims(array, axis=0)
+        predictions = general_model.predict(array, verbose=0)
+        decoded = tf.keras.applications.mobilenet_v2.decode_predictions(predictions, top=5)[0]
+        labels = [label.lower().replace("_", " ") for _, label, _ in decoded]
+
+        for label in labels[:3]:
+            if any(term in label for term in NON_PLANT_LABEL_TERMS):
+                return False, f"The image appears to contain '{labels[0]}', not a supported crop leaf."
+        return True, ""
+    except Exception as error:
+        # Do not crash the app if ImageNet weights cannot be downloaded.
+        return True, f"General image screening was unavailable: {error}"
+
+
+def predict_disease(image):
+    """Predict a supported crop class and reject uncertain results."""
+    if ENABLE_GENERAL_IMAGE_CHECK:
+        content_ok, content_message = check_general_image_content(image)
+        if not content_ok:
+            return not_categorized(reason=content_message)
+
     resized = image.convert("RGB").resize(IMAGE_SIZE)
     array = np.expand_dims(np.asarray(resized, dtype=np.float32), axis=0)
     probabilities = np.asarray(MODEL.predict(array, verbose=0)[0], dtype=np.float64)
     if probabilities.size != len(CLASS_NAMES) or not np.all(np.isfinite(probabilities)):
-        return not_categorized(reason="The model could not produce a valid prediction.")
+        return not_categorized(reason="The crop model could not produce a valid prediction.")
 
     best_index = int(np.argmax(probabilities))
     best_probability = float(probabilities[best_index])
@@ -201,14 +259,21 @@ def predict_disease(image):
     class_name = CLASS_NAMES[best_index]
     crop, disease = extract_crop_and_disease(class_name)
 
-    # Reject labels outside the three crops this app actually supports.
     if crop.strip().lower() not in SUPPORTED_CROPS:
-        return not_categorized(confidence, "The predicted category is outside the crops supported by this website.")
-    # Reject uncertain or ambiguous predictions rather than showing a forced guess.
+        return not_categorized(
+            confidence,
+            "The predicted category is outside the crops supported by this website.",
+        )
     if confidence < MIN_CONFIDENCE:
-        return not_categorized(confidence, "The prediction confidence is below the acceptance threshold.")
+        return not_categorized(
+            confidence,
+            "The prediction confidence is below the acceptance threshold.",
+        )
     if gap < MIN_TOP_TWO_GAP:
-        return not_categorized(confidence, "The model's leading categories are too close to make a reliable selection.")
+        return not_categorized(
+            confidence,
+            "The model's leading categories are too close to make a reliable selection.",
+        )
 
     information = get_disease_information(disease)
     return [{
@@ -254,9 +319,13 @@ def save_prediction_history(results, mode, latitude, longitude):
         if not file_exists:
             writer.writerow(["Date Time", "Mode", "Crop", "Disease", "Confidence", "Latitude", "Longitude"])
         writer.writerow([
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), mode,
-            result["crop"], result["disease"], f"{result['confidence']:.2f}%",
-            latitude, longitude,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            mode,
+            result["crop"],
+            result["disease"],
+            f"{result['confidence']:.2f}%",
+            latitude,
+            longitude,
         ])
 
 
@@ -311,9 +380,11 @@ def create_pdf_report(image, results, mode, latitude, longitude):
         image_buffer = io.BytesIO()
         image.convert("RGB").save(image_buffer, format="JPEG", quality=90)
         image_buffer.seek(0)
-        pdf.drawImage(ImageReader(image_buffer), image_box_x, image_box_y,
-                      width=image_box_w, height=image_box_h, preserveAspectRatio=True,
-                      anchor="c", mask="auto")
+        pdf.drawImage(
+            ImageReader(image_buffer), image_box_x, image_box_y,
+            width=image_box_w, height=image_box_h, preserveAspectRatio=True,
+            anchor="c", mask="auto",
+        )
         pdf.setFont("Helvetica-Oblique", 8)
         pdf.drawCentredString(image_box_x + image_box_w / 2, image_box_y - 12, "Input image")
     except Exception:
@@ -352,7 +423,7 @@ def create_pdf_report(image, results, mode, latitude, longitude):
 
 
 # ============================================================
-# HEADER
+# HEADER AND INPUT
 # ============================================================
 st.title("🌱 AI Crop Disease Detection")
 st.markdown("""
@@ -361,26 +432,33 @@ st.markdown("""
 Upload an image, use your laptop camera, or connect to a drone camera stream URL.
 """)
 st.caption(
-    "Supported crops: Guava, Mango and Neem. Other crops and uncertain images should be shown as not categorized. "
-    "Because this model was trained on a fixed set of classes, it may still incorrectly match some unseen images; "
-    "a dedicated unknown-image dataset is needed for stronger rejection."
+    "Supported crops: Guava, Mango and Neem. Unsupported crops and unclear images should be shown as not categorized. "
+    "Automated screening reduces some incorrect matches, but a model trained and tested with unsupported images is "
+    "needed for stronger unknown-image rejection."
 )
 
 with st.sidebar:
     st.header("📷 Image Input")
-    input_mode = st.radio("Select input mode:", ["📤 Upload Image", "📷 Laptop Camera", "🚁 Drone Mode"])
+    input_mode = st.radio(
+        "Select input mode:",
+        ["📤 Upload Image", "📷 Laptop Camera", "🚁 Drone Mode"],
+    )
     st.divider()
 
 selected_image = None
+
 if input_mode == "📤 Upload Image":
     st.subheader("📤 Upload Crop Leaf Image")
-    uploaded_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"], help="Upload a clear leaf image.")
+    uploaded_file = st.file_uploader(
+        "Upload image", type=["jpg", "jpeg", "png"], help="Upload a clear leaf image."
+    )
     if uploaded_file is not None:
         try:
             selected_image = Image.open(uploaded_file).convert("RGB")
         except Exception as error:
             st.error("Unable to open the uploaded image.")
             st.exception(error)
+
 elif input_mode == "📷 Laptop Camera":
     st.subheader("📷 Laptop Camera")
     st.info("Allow camera access in your browser.")
@@ -391,11 +469,18 @@ elif input_mode == "📷 Laptop Camera":
         except Exception as error:
             st.error("Unable to read the camera image.")
             st.exception(error)
+
 else:
     st.subheader("🚁 Drone Camera")
-    drone_input_type = st.radio("Select drone input:", ["📁 Upload Drone Image", "🔗 Connect Drone Camera"], horizontal=True)
+    drone_input_type = st.radio(
+        "Select drone input:",
+        ["📁 Upload Drone Image", "🔗 Connect Drone Camera"],
+        horizontal=True,
+    )
     if drone_input_type == "📁 Upload Drone Image":
-        drone_file = st.file_uploader("Upload drone image", type=["jpg", "jpeg", "png"], key="drone_upload")
+        drone_file = st.file_uploader(
+            "Upload drone image", type=["jpg", "jpeg", "png"], key="drone_upload"
+        )
         if drone_file is not None:
             try:
                 selected_image = Image.open(drone_file).convert("RGB")
@@ -404,7 +489,10 @@ else:
                 st.exception(error)
     else:
         st.info("Enter the live camera stream URL provided by your drone or camera.")
-        drone_url = st.text_input("🔗 Drone Camera URL", placeholder="Example: rtsp://192.168.1.100:8554/live")
+        drone_url = st.text_input(
+            "🔗 Drone Camera URL",
+            placeholder="Example: rtsp://192.168.1.100:8554/live",
+        )
         col_a, col_b = st.columns(2)
         with col_a:
             connect_button = st.button("🔗 Connect to Drone", type="primary", use_container_width=True)
@@ -455,31 +543,22 @@ if selected_image is not None:
     if st.button("🔍 Detect Crop Disease", type="primary", use_container_width=True):
         quality_ok, quality_message = check_image_quality(selected_image)
         if not quality_ok:
-            st.warning(quality_message)
+            st.session_state.prediction_results = not_categorized(reason=quality_message)
+            st.session_state.last_image = selected_image.copy()
+            st.session_state.last_mode = input_mode
+            save_prediction_history(st.session_state.prediction_results, input_mode, latitude, longitude)
         else:
             with st.spinner("Checking the image and analyzing the crop leaf..."):
                 try:
-                    # Reject detectable people before running the crop-only classifier.
-                    person_detected, person_confidence = detect_person(selected_image)
-                    if person_detected:
-                        results = not_categorized(
-                            confidence=0.0,
-                            reason=(
-                                "A person was detected in this image "
-                                f"({person_confidence * 100:.1f}% person-detector confidence)."
-                            ),
-                        )
-                    else:
-                        results = predict_disease(selected_image)
-
+                    results = predict_disease(selected_image)
                     st.session_state.prediction_results = results
                     st.session_state.last_image = selected_image.copy()
                     st.session_state.last_mode = input_mode
                     save_prediction_history(results, input_mode, latitude, longitude)
                 except Exception as error:
                     st.error(
-                        "Image checking failed, so no crop disease prediction was made. "
-                        "Check the internet connection on the first run and ensure Ultralytics is installed."
+                        "Image checking failed. Check that the crop model is present and that the first-run "
+                        "ImageNet weights can be downloaded. No crop disease prediction was made."
                     )
                     st.exception(error)
 
@@ -510,9 +589,22 @@ if results:
 
     st.subheader("📄 PDF Report")
     try:
-        pdf_bytes = create_pdf_report(st.session_state.last_image, results, st.session_state.last_mode, latitude, longitude)
-        filename = "crop_disease_report_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf"
-        st.download_button("📥 Download PDF Report", data=pdf_bytes, file_name=filename, mime="application/pdf", use_container_width=True)
+        if st.session_state.last_image is not None:
+            pdf_bytes = create_pdf_report(
+                st.session_state.last_image,
+                results,
+                st.session_state.last_mode,
+                latitude,
+                longitude,
+            )
+            filename = "crop_disease_report_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf"
+            st.download_button(
+                "📥 Download PDF Report",
+                data=pdf_bytes,
+                file_name=filename,
+                mime="application/pdf",
+                use_container_width=True,
+            )
     except Exception as error:
         st.error("Unable to generate PDF report.")
         st.exception(error)
@@ -554,14 +646,13 @@ st.markdown("""
 """)
 
 with st.expander("🔧 System Information"):
-    st.write("**Model:** Crop Disease MobileNetV2 (24 classes)")
-    st.write(f"**Number of classes:** {len(CLASS_NAMES)}")
+    st.write("**Crop model:** MobileNetV2 (24 classes)")
+    st.write(f"**Number of crop classes:** {len(CLASS_NAMES)}")
     st.write("**Input size:** 224 × 224 × 3")
     st.write("**Prediction output:** Single best prediction with rejection checks")
-    st.write("**Person-image check:** YOLOv8n pretrained COCO person detector")
-    st.write(f"**Person detection threshold:** {PERSON_CONFIDENCE_THRESHOLD * 100:.0f}%")
-    st.write("**Minimum confidence:** 75%")
-    st.write("**Minimum gap between top two probabilities:** 15 percentage points")
+    st.write("**General image screening:** ImageNet MobileNetV2; rejects many obvious non-plant images")
+    st.write(f"**Minimum confidence:** {MIN_CONFIDENCE:.0f}%")
+    st.write(f"**Minimum gap between top two probabilities:** {MIN_TOP_TWO_GAP:.0f} percentage points")
     st.write(f"**Model path:** {MODEL_PATH}")
     st.write(f"**Class names:** {CLASS_NAMES_PATH}")
 
